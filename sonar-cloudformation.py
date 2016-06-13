@@ -1,9 +1,11 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import sys
 import inspect
 import numbers
 import collections
+import json
 
 def name(n):
         return lambda x: x
@@ -41,31 +43,36 @@ class Conditions(object):
         class CreateDB(object):
                 pass
 
-class CloudFormationObject(object):
+class CloudFormationMu(object):
+        def __iter__(self):
+                for name, obj in self._iter_order(inspect.getmembers(self.__class__)):
+                        if name in ('__class__', '__module__'):
+                                continue
+                        if inspect.isclass(obj):
+                                yield self._iter_proxy(name, obj())
+                        elif isinstance(obj, (bool, basestring, collections.Sequence, dict, numbers.Number)):
+                                yield self._iter_proxy(name, obj)
+
+        def _iter_proxy(self, name, obj):
+                return (name, obj)
+
+        def _iter_order(self, l):
+                return l
+
+class CloudFormationObject(CloudFormationMu):
         def __new__(cls):
                 return dict(super(CloudFormationObject, cls).__new__(cls))
 
-        def __iter__(self):
-                for name, obj in inspect.getmembers(self.__class__):
-                        if name in ('__class__', '__module__'):
-                                continue
-                        if inspect.isclass(obj):
-                                yield (name, obj())
-                        elif isinstance(obj, (bool, basestring, collections.Sequence, dict, numbers.Number)):
-                                yield (name, obj)
-
-class CloudFormationList(object):
+class CloudFormationList(CloudFormationMu):
         def __new__(cls):
                 return list(super(CloudFormationList, cls).__new__(cls))
 
-        def __iter__(self):
-                for name, obj in inspect.getmembers(self.__class__):
-                        if name in ('__class__', '__module__'):
-                                continue
-                        if inspect.isclass(obj):
-                                yield obj()
-                        elif isinstance(obj, (bool, basestring, collections.Sequence, dict, numbers.Number)):
-                                yield obj
+        def _iter_proxy(self, name, obj):
+                return obj
+
+        def _iter_order(self, l):
+                return sorted(l, key=lambda t: t[0])
+
 
 def ref(cls):
         return {"Ref": cls.__name__}
@@ -83,16 +90,19 @@ class Resources(CloudFormationObject):
                                 dupa = "zbita"
 
 
-class AWSTemplate(object):
+class CloudFormationTemplate(object):
+        pass
+
+class AWSTemplate(CloudFormationTemplate):
         def __init__(self, classes=None, description="Hurr durr."):
                 tmpl = {}
                 for c in classes:
                         tmpl.update({c.__name__: c()})
-                print tmpl
+                self.tmpl = tmpl
 
 
 if __name__ == '__main__':
-        AWSTemplate(classes=[Resources], description="Descriptionsnings.")
+        print json.dumps(AWSTemplate(classes=[Resources], description="Descriptionsnings.").tmpl)
 
         #clsmembers = inspect.getmembers(sys.modules[__name__], inspect.isclass)
 
